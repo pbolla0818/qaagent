@@ -1,24 +1,22 @@
-# 👾 Crawlix
+# 👾 qaagent
 
-[![npm version](https://badge.fury.io/js/crawlix.svg)](https://www.npmjs.com/package/crawlix)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/m-taqii/crawlix/pulls)
 
 > Claw through bugs before your users do.
 
-![Crawlix demo](https://github.com/user-attachments/assets/d7c9e046-2c84-4cc8-9549-81f2639cb6d1)
+qaagent is an autonomous QA agent that spawns AI-powered user personas and unleashes them on your product. Each persona navigates independently, makes real decisions, hits dead ends, and finds bugs — without you writing a single test script.
 
-Crawlix is an open-source autonomous QA agent that spawns AI-powered user personas and unleashes them on your product. Each persona navigates independently, makes real decisions, hits dead ends, and finds bugs - without you writing a single test script.
+It can also **generate test cases automatically** from your active JIRA sprint and open GitHub PRs: pull the issue, read the PR diff, derive end-to-end goals, run them.
 
 ---
 
 ## How it works
 
-Crawlix spawns multiple AI agents simultaneously. Each one opens your app in a real browser, reads the UI, and navigates toward the goal exactly as that type of user would behave - including their mistakes, impatience, and confusion. When they find something broken, confusing, or unexpected - they report it.
+qaagent spawns multiple AI agents simultaneously. Each one opens your app in a real browser, reads the UI, and navigates toward the goal as that type of user would behave — including their mistakes, impatience, and confusion. When they find something broken, confusing, or unexpected — they report it.
 
 ```
-  👾 Crawlix - Claw through bugs before your users do.
+  👾 qaagent - Claw through bugs before your users do.
 
   target   → http://localhost:3000/
   goal     → Check the landing page is everything working fine
@@ -31,81 +29,241 @@ Crawlix spawns multiple AI agents simultaneously. Each one opens your app in a r
   ~ Non-Native        106 warnings · 1 info      10 steps · 27.5s
   ~ Slow Network      no findings                4 steps  · 27.7s
 
-  ╭──────────────────────────────────────────╮
-  │  👾 Crawlix - run complete               │
-  │                                          │
-  │    1 critical  106 warnings  1 info      │
-  │                                          │
-  │    0 passed  0 stuck  6 incomplete       │
-  │                                          │
-  │    total time → 539.8s                   │
-  ╰──────────────────────────────────────────╯
-
-  📋 report saved → ./crawlix-reports/report-2026-05-24.md
+  📋 report saved → ./qaagent-reports/report-...
 ```
-
-No test scripts. No selectors. No maintenance.
 
 ---
 
 ## Install
 
+Works on **macOS, Linux, and Windows**. Requires **Node.js ≥ 18**.
+
+### 1. Prerequisites
+
+Install **Node** and **pnpm** for your OS.
+
+**macOS**
+
 ```bash
-npm install -g crawlix
+brew install node
+npm install -g pnpm
+```
+
+**Linux (Ubuntu / Debian)**
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+npm install -g pnpm
+```
+
+**Windows (PowerShell)**
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+# Close and reopen PowerShell, then:
+npm install -g pnpm
+```
+
+Verify on any OS:
+
+```bash
+node --version    # v18 or newer
+pnpm --version
+```
+
+### 2. Clone and build qaagent
+
+```bash
+git clone <repo-url> qaagent
+cd qaagent
+pnpm install
+pnpm exec playwright install chromium    # one-time, ~170 MB
+pnpm build
+```
+
+### 3. Make `qaagent` available globally
+
+**macOS / Linux**
+
+```bash
+pnpm link --global .       # the trailing dot is required on pnpm v10+
+```
+
+> If you see `[ERR_PNPM_LINK_BAD_PARAMS] You must provide a parameter`, you forgot the trailing `.` — that's pnpm v10+ expecting the source directory explicitly.
+>
+> Equivalent: `pnpm install -g .`
+
+If you see *"The configured global bin directory is not in PATH"*:
+
+```bash
+pnpm setup          # writes PNPM_HOME into ~/.zshrc (or ~/.bashrc)
+source ~/.zshrc     # or open a new terminal
+pnpm link --global .
+```
+
+Alternative — use `npm link` (npm's bin dir is usually already on PATH):
+
+```bash
+npm link
+```
+
+**Windows (PowerShell)**
+
+```powershell
+pnpm link --global .
+```
+
+If you see the same PATH error:
+
+```powershell
+pnpm setup
+# Close and reopen PowerShell so PNPM_HOME is picked up
+pnpm link --global .
+```
+
+After linking, `qaagent` works in **cmd**, **PowerShell**, and **Git Bash** — pnpm auto-generates `.cmd` and `.ps1` shims from the `bin` field.
+
+### 4. Verify
+
+```bash
+qaagent --version
+```
+
+### Alternative — run from source without installing globally
+
+```bash
+pnpm dev setup                                           # = tsx src/cli/index.ts setup
+pnpm dev run --url https://example.com --goal "find pricing"
+pnpm dev generate --sprint active
+```
+
+### Uninstall
+
+```bash
+pnpm uninstall --global qaagent      # or: npm unlink -g qaagent
+```
+
+```bash
+# macOS / Linux
+rm -rf ~/.qaagent
+```
+
+```powershell
+# Windows
+Remove-Item -Recurse $env:USERPROFILE\.qaagent
 ```
 
 ---
 
 ## Setup
 
-Run once. Crawlix asks for your LLM provider and API key - remembers it forever.
+Run once. qaagent will ask for your LLM provider(s), optional JIRA Cloud creds, and optional GitHub creds.
 
 ```bash
-crawlix setup
+qaagent setup
 ```
 
-Supported providers:
+The config is written to:
+- macOS / Linux: `~/.qaagent/qaagent.config.json`
+- Windows: `%USERPROFILE%\.qaagent\qaagent.config.json`
 
+Supported LLM providers:
 
-- Groq 
-- Gemini 
+- Groq
+- Gemini
 - Cerebras
 - Mistral
 - OpenRouter
-- Ollama 
+- Ollama
 - OpenAI
-- Anthropic 
+- Anthropic
+- **Azure AI Foundry**
+- **AWS Bedrock**
 
-Config is saved to `~/.crawlix/crawlix.config.json`.
+Config is saved to `~/.qaagent/qaagent.config.json`.
+
+### Config shape
+
+```json
+{
+  "llm": {
+    "primary":  { "provider": "bedrock", "region": "us-east-1", "awsAccessKeyId": "...", "awsSecretAccessKey": "...", "model": "anthropic.claude-haiku-4-5-20251001-v1:0" },
+    "fallback": { "provider": "azure-foundry", "baseURL": "https://<resource>.services.ai.azure.com/openai/v1", "apiKey": "..." }
+  },
+  "jira": {
+    "baseURL":    "https://yourco.atlassian.net",
+    "email":      "you@yourco.com",
+    "apiToken":   "...",
+    "projectKey": "ENG",
+    "boardId":    42
+  },
+  "git": {
+    "host":          "github",
+    "token":         "ghp_...",
+    "repo":          "yourco/yourapp",
+    "baseURL":       "https://staging.yourapp.com",
+    "releaseBranch": "release/2026.07"
+  }
+}
+```
 
 ---
 
 ## Usage
 
+### `qaagent run` — one-shot, ad-hoc
+
 ```bash
 # run all agents against your app
-crawlix run --url https://myapp.com --goal "complete the signup flow"
+qaagent run --url https://myapp.com --goal "complete the signup flow"
 
-# run specific agent(s) only - comma separated
-crawlix run --url https://myapp.com --goal "login" --agent first-timer,adversarial
+# run specific agent(s) only
+qaagent run --url https://myapp.com --goal "login" --agent first-timer,adversarial
 
-# run headed - watch agents navigate in real browser
-crawlix run --url https://myapp.com --goal "checkout" --headed
+# headed
+qaagent run --url https://myapp.com --goal "checkout" --headed
 
-# control max steps per agent
-crawlix run --url https://myapp.com --goal "find pricing" --steps 15
+# max steps + concurrency
+qaagent run --url https://myapp.com --goal "find pricing" --steps 15 --concurrency 1
 
-# control how many agents run in parallel
-crawlix run --url https://myapp.com --goal "test signup" --concurrency 1
+# round-robin across configured providers
+qaagent run --url https://myapp.com --goal "test signup" --round-robin
+```
 
-# use round robin across multiple providers to avoid rate limiting
-crawlix run --url https://myapp.com --goal "test signup" --round-robin
+### `qaagent generate` — derive tests from JIRA + PRs
 
-# list all available agents
-crawlix agents
+```bash
+# every active-sprint issue + its latest PR targeting the release branch
+qaagent generate --sprint active --board 42
 
-# reconfigure your LLM provider
-crawlix setup
+# board + release branch from config (jira.boardId, git.releaseBranch)
+qaagent generate --sprint active
+
+# override the release branch ad-hoc
+qaagent generate --sprint active --release-branch release/2026.07
+
+# specific PRs, regardless of sprint
+qaagent generate --pr 1234,1235
+
+# latest N open PRs targeting the release branch (defaults to 10)
+qaagent generate --pr --limit 5
+
+# preview generated goals without launching browsers
+qaagent generate --sprint active --dry-run
+```
+
+Behind the scenes, `--sprint active`:
+1. Resolves the active sprint(s) for the board (`/rest/agile/1.0/board/{boardId}/sprint?state=active`) and pulls the issues in those sprint(s).
+2. For each issue key, searches GitHub for the latest PR that targets the release branch and references the key (`is:pr base:<releaseBranch> <KEY>`).
+3. Fetches each matched PR's diff and metadata.
+4. Sends `{issue, diff}` pairs to the LLM, which produces a list of `{goal, persona}` test cases.
+5. Runs each goal through the `Orchestrator` and produces a single combined report.
+
+### `qaagent agents` — list personas
+
+```bash
+qaagent agents --list
 ```
 
 ---
@@ -125,45 +283,30 @@ crawlix setup
 
 ## Custom agents
 
-Drop a JSON file into `.crawlix/agents/` in your project root:
+Drop a JSON file into `.qaagent/agents/` in your project root:
 
 ```json
 {
   "name": "doctor",
   "description": "Medical professional, time-pressured, technically literate",
-  "systemPrompt": "You are a busy doctor with 2 minutes between patients. You know what you want, you don't read instructions, and you get frustrated fast if the UI isn't obvious.",
+  "systemPrompt": "You are a busy doctor with 2 minutes between patients...",
   "patience": 4,
   "aggression": 3,
   "readingBehavior": "skim"
 }
 ```
 
-Crawlix picks it up automatically on the next run. No code, no imports, no build step.
-
-Run a specific custom agent:
-
-```bash
-crawlix run --url https://myapp.com --goal "book an appointment" --agent doctor
-```
+qaagent picks it up automatically on the next run.
 
 ---
 
 ## Reports
 
-After every run, Crawlix generates an AI-powered markdown report saved to `./crawlix-reports/`.
-
-The report includes:
-- Executive summary
-- Critical issues with suggested fixes
-- Warning patterns across agents
-- Agent performance breakdown
-- Prioritized recommendations
+After every run (both `run` and `generate`), qaagent produces a markdown report in `./qaagent-reports/` with an executive summary, critical issues with suggested fixes, warning patterns, agent performance, and prioritized recommendations.
 
 ---
 
 ## Findings
-
-Crawlix reports three severity levels:
 
 | Severity | Meaning |
 |---|---|
@@ -173,47 +316,23 @@ Crawlix reports three severity levels:
 
 ---
 
-## Why no test scripts?
-
-Traditional QA tools require you to write and maintain selectors, flows, and assertions. They break when your UI changes. They only test paths you already thought of.
-
-Crawlix doesn't know your app. That's the point. It finds the paths you didn't think of - the ones your real users will find on their own.
-
----
-
 ## Contributing
 
-Contributions are welcome - bug fixes, new agents, adapter improvements, or anything that makes it better.
-
-### Getting started
-
 ```bash
-git clone https://github.com/m-taqii/crawlix
-cd crawlix
+git clone <repo>
+cd qaagent
 pnpm install
 pnpm tsx src/cli/index.ts run --url https://example.com --goal "find the more information link"
 ```
 
-### Ways to contribute
-
-- **Add a built-in agent** - add a persona to `src/personas/index.ts` and open a PR
-- **Fix a bug** - open an issue first, then a PR with the fix
-- **Improve element resolution** - `src/adapters/web.ts` `resolve()` method always needs work
-- **Add an adapter** - API testing, mobile, desktop - see `src/adapters/base.ts` for the interface
-- **Improve the report** - `src/core/reporter.ts` - better prompts, better structure
-
 ### Before opening a PR
 
-- Run `pnpm exec tsc --noEmit` - must be clean
+- Run `pnpm exec tsc --noEmit` — must be clean
 - Test against a real URL
-- Keep it focused - one thing per PR
-
-### Found a bug?
-
-Open an issue with the URL you were testing, the goal you gave, and the error output.
+- Keep it focused — one thing per PR
 
 ---
 
 ## License
 
-MIT - see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)

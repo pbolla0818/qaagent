@@ -138,6 +138,21 @@ pnpm dev run --url https://example.com --goal "find pricing"
 pnpm dev generate --sprint active
 ```
 
+`pnpm dev` runs the TypeScript source directly via `tsx` — no build step needed, always reflects the latest code in `src/`.
+
+### After editing source code
+
+`pnpm link --global .` makes the global `qaagent` binary point at `dist/cli/index.js` — that file is **only** updated by `pnpm build`. So if you edit anything under `src/` and want the global command to pick it up:
+
+```bash
+pnpm build       # overwrites dist/ in place; no need to re-link
+qaagent setup    # now runs the new code
+```
+
+You don't need to re-run `pnpm link --global .` — the symlink is stable, only the contents of `dist/` need refreshing.
+
+For faster iteration while developing, prefer `pnpm dev <command>` — it skips the build entirely.
+
 ### Uninstall
 
 ```bash
@@ -158,7 +173,7 @@ Remove-Item -Recurse $env:USERPROFILE\.qaagent
 
 ## Setup
 
-Run once. qaagent will ask for your LLM provider(s), optional JIRA Cloud creds, and optional GitHub creds.
+Run once. qaagent walks you through three sections — LLM, JIRA, GitHub — and writes everything to a single config file.
 
 ```bash
 qaagent setup
@@ -168,7 +183,51 @@ The config is written to:
 - macOS / Linux: `~/.qaagent/qaagent.config.json`
 - Windows: `%USERPROFILE%\.qaagent\qaagent.config.json`
 
-Supported LLM providers:
+### Prompt flow
+
+Each section has a short essentials path plus a single **"Advanced?"** toggle that opens the rarely-needed options. The happy path is ~13 prompts; saying No to JIRA or GitHub trims it further.
+
+```text
+👾 qaagent setup
+
+── LLM ──────────────────────────────────────────────
+? Select LLM provider                Groq / OpenAI / Anthropic / Bedrock / Foundry / …
+? Enter your <provider> API key      ********                       (Ollama skips this)
+? Model (enter for default)          (press Enter — sensible default per provider)
+? Configure advanced LLM options?    N
+    ↳ if Y → fallback provider + round-robin pool
+
+── JIRA ─────────────────────────────────────────────
+? Configure JIRA Cloud?              Y
+? JIRA base URL                      https://yourco.atlassian.net
+? JIRA account email                 you@yourco.com
+? JIRA API token                     ********
+? Board id for --sprint active       42
+? Configure advanced JIRA options?   N
+    ↳ if Y → project key filter, bug-intake project + severities + labels
+
+── GitHub ───────────────────────────────────────────
+? Configure GitHub?                  Y
+? GitHub personal access token       ********
+? Repo (owner/name)                  yourco/web
+? App URL to test                    https://staging.yourco.com
+? Release branch                     main
+? Add more repos (multi-repo mode)?  N
+    ↳ if Y → loop: owner/name + app URL (blank=backend) + release branch, per repo
+
+✓ saved to ~/.qaagent/qaagent.config.json
+→ qaagent generate --sprint active
+```
+
+**Field notes**
+
+- **Bedrock** instead asks `AWS region`, `AWS access key id`, `AWS secret access key` (no chained `aws configure`).
+- **Azure AI Foundry** asks for the per-resource endpoint (`https://<resource>.services.ai.azure.com/openai/v1`) and api-key.
+- **Ollama** runs locally — no API key prompt.
+- **Multi-repo mode** — each repo can have its own `releaseBranch`; leave `App URL` blank for backend/no-UI repos so qaagent skips them from browser runs.
+- **Bug intake** (advanced JIRA) — fills a separate JIRA project (e.g. `QABUGS`) with the bugs the agents find. Defaults to critical-only severity, labels `qaagent` + `ai-generated`.
+
+### Supported LLM providers
 
 - Groq
 - Gemini
@@ -180,8 +239,6 @@ Supported LLM providers:
 - Anthropic
 - **Azure AI Foundry**
 - **AWS Bedrock**
-
-Config is saved to `~/.qaagent/qaagent.config.json`.
 
 ### Config shape
 

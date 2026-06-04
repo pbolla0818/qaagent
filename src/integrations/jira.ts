@@ -1,4 +1,4 @@
-import type { JiraConfig, JiraIssue } from '../types/index.js'
+import { DEFAULT_DEV_STATUSES, type JiraConfig, type JiraIssue } from '../types/index.js'
 
 interface JiraSprint {
     id: number
@@ -49,12 +49,17 @@ export class JiraClient {
         return data.values
     }
 
-    // Fetch issues in the given sprints, optionally narrowed to a project.
-    async getIssuesInSprints(sprintIds: number[]): Promise<JiraIssue[]> {
+    // Fetch issues in the given sprints, narrowed by project (config) and
+    // status filter. Pass an empty `statuses` array to disable the status filter.
+    async getIssuesInSprints(sprintIds: number[], statuses?: readonly string[]): Promise<JiraIssue[]> {
         if (sprintIds.length === 0) return []
+        const statusFilter = statuses ?? this.config.devStatuses ?? DEFAULT_DEV_STATUSES
         const jqlParts = [
             `sprint in (${sprintIds.join(',')})`,
             this.config.projectKey ? `project = "${this.config.projectKey}"` : null,
+            statusFilter.length > 0
+                ? `status in (${statusFilter.map(s => `"${s}"`).join(',')})`
+                : null,
         ].filter(Boolean) as string[]
         const jql = jqlParts.join(' AND ')
 
@@ -69,10 +74,10 @@ export class JiraClient {
         return data.issues.map(i => this.normalize(i))
     }
 
-    // Convenience: active sprint(s) for board → issues in those sprints.
-    async getActiveSprintIssues(boardId: number): Promise<JiraIssue[]> {
+    // Convenience: active sprint(s) for board → open dev-phase issues in those sprints.
+    async getActiveSprintIssues(boardId: number, statuses?: readonly string[]): Promise<JiraIssue[]> {
         const sprints = await this.getActiveSprints(boardId)
-        return this.getIssuesInSprints(sprints.map(s => s.id))
+        return this.getIssuesInSprints(sprints.map(s => s.id), statuses)
     }
 
     async getIssue(key: string): Promise<JiraIssue> {

@@ -101,6 +101,7 @@ function buildPrompt(input: GoalGeneratorInput): LLMInput {
     ].filter(Boolean).join('\n') : 'No linked JIRA issue.'
 
     const prBlock = [
+        `Repo: ${input.pr.repo}`,
         `PR #${input.pr.number}: ${input.pr.title}`,
         `Branch: ${input.pr.branch}`,
         '',

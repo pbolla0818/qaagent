@@ -192,18 +192,35 @@ Config is saved to `~/.qaagent/qaagent.config.json`.
     "fallback": { "provider": "azure-foundry", "baseURL": "https://<resource>.services.ai.azure.com/openai/v1", "apiKey": "..." }
   },
   "jira": {
-    "baseURL":    "https://yourco.atlassian.net",
-    "email":      "you@yourco.com",
-    "apiToken":   "...",
-    "projectKey": "ENG",
-    "boardId":    42
+    "baseURL":          "https://yourco.atlassian.net",
+    "email":            "you@yourco.com",
+    "apiToken":         "...",
+    "projectKey":       "ENG",
+    "boardId":          42,
+    "devStatuses":      ["In Development", "In Dev", "Dev", "Development", "In Progress"],
+
+    "intakeProjectKey": "QABUGS",
+    "intakeIssueType":  "Bug",
+    "intakeLabels":     ["qaagent", "ai-generated"],
+    "intakeSeverities": ["critical"]
   },
   "git": {
     "host":          "github",
     "token":         "ghp_...",
+
+    // Option A — single repo (shorthand)
     "repo":          "yourco/yourapp",
     "baseURL":       "https://staging.yourapp.com",
-    "releaseBranch": "release/2026.07"
+    "releaseBranch": "release/2026.07",
+
+    // Option B — multiple repos under one project (overrides single-repo fields)
+    "repos": [
+      { "name": "yourco/web",    "baseURL": "https://staging.yourapp.com",     "releaseBranch": "release/2026.07" },
+      { "name": "yourco/api",                                                   "releaseBranch": "main" },
+      { "name": "yourco/mobile",                                                "releaseBranch": "release/mobile-2026.07" }
+    ]
+    // top-level baseURL/releaseBranch act as defaults for repos that omit them.
+    // repos without a baseURL (e.g. backend, mobile) are skipped from browser runs but still listed in the report.
   }
 }
 ```
@@ -242,6 +259,15 @@ qaagent generate --sprint active
 
 # override the release branch ad-hoc
 qaagent generate --sprint active --release-branch release/2026.07
+
+# include only specific statuses (overrides jira.devStatuses)
+qaagent generate --sprint active --status "In Dev,Code Review"
+
+# include every status in the sprint (no filter)
+qaagent generate --sprint active --status "*"
+
+# scope a multi-repo project to a single repo
+qaagent generate --sprint active --repo yourco/web
 
 # specific PRs, regardless of sprint
 qaagent generate --pr 1234,1235

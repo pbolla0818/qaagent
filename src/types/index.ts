@@ -99,15 +99,70 @@ export interface JiraConfig {
   apiToken: string
   projectKey?: string   // optional narrow filter, e.g. "ENG"
   boardId?: number   // default board for --sprint active
+  devStatuses?: string[]   // statuses considered "open development" — see DEFAULT_DEV_STATUSES
+
+  // Bug intake — separate project where agent-discovered bugs are filed
+  intakeProjectKey?: string   // e.g. "QABUGS"
+  intakeIssueType?: string   // defaults to "Bug"
+  intakeLabels?: string[]   // applied to every filed ticket
+  intakeSeverities?: Array<'critical' | 'warning' | 'info'>   // which severities to file
 }
 
+export const DEFAULT_INTAKE_ISSUE_TYPE = 'Bug'
+export const DEFAULT_INTAKE_LABELS = ['qaagent', 'ai-generated'] as const
+export const DEFAULT_INTAKE_SEVERITIES = ['critical'] as const
+
+// Default open-dev-phase statuses, matched against issue.fields.status.name.
+// Covers common JIRA workflows. Override per-project via JiraConfig.devStatuses
+// or per-run via the `--status` flag on `qaagent generate`.
+export const DEFAULT_DEV_STATUSES = [
+  'In Development',
+  'In Dev',
+  'Dev',
+  'Development',
+  'In Progress',
+] as const
+
 // GitHub
+export interface RepoConfig {
+  name: string   // owner/name, e.g. "acme/web"
+  baseURL?: string   // app URL to test for this repo (frontend only — undefined means "skip browser run")
+  releaseBranch?: string   // per-repo release branch (overrides GitConfig defaults)
+}
+
 export interface GitConfig {
   host: 'github'
   token: string
-  repo: string   // owner/name, e.g. "acme/web"
-  baseURL?: string   // app URL to test against (e.g. https://staging.yourapp.com)
-  releaseBranch?: string   // PRs are filtered to those targeting this branch in --sprint active mode
+
+  // Multi-repo (preferred for projects spanning frontend + backend + mobile)
+  repos?: RepoConfig[]
+
+  // Single-repo shorthand (still supported)
+  repo?: string
+
+  // Top-level defaults — applied to repos that omit their own value
+  baseURL?: string
+  releaseBranch?: string
+}
+
+// Normalize either config shape (single `repo` or `repos[]`) into a RepoConfig array.
+// Top-level baseURL / releaseBranch act as fallbacks for repos that omit them.
+export function getRepos(config: GitConfig): RepoConfig[] {
+  if (config.repos && config.repos.length > 0) {
+    return config.repos.map(r => ({
+      name: r.name,
+      ...(r.baseURL ?? config.baseURL ? { baseURL: r.baseURL ?? config.baseURL } : {}),
+      ...(r.releaseBranch ?? config.releaseBranch ? { releaseBranch: r.releaseBranch ?? config.releaseBranch } : {}),
+    }))
+  }
+  if (config.repo) {
+    return [{
+      name: config.repo,
+      ...(config.baseURL && { baseURL: config.baseURL }),
+      ...(config.releaseBranch && { releaseBranch: config.releaseBranch }),
+    }]
+  }
+  throw new Error('git config: must provide either `repo` (single) or `repos` (multiple)')
 }
 
 // qaagent Config (saved at ~/.qaagent/qaagent.config.json)
@@ -157,6 +212,7 @@ export interface JiraIssue {
 }
 
 export interface GitHubPR {
+  repo: string   // owner/name
   number: number
   title: string
   branch: string

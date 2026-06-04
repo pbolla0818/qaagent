@@ -14,13 +14,16 @@ const DIFF_CHAR_CAP = 12_000
 
 export class GitHubClient {
     private apiBase = 'https://api.github.com'
+    private token: string
 
-    constructor(private config: GitConfig) {}
+    constructor(config: Pick<GitConfig, 'token'>) {
+        this.token = config.token
+    }
 
     private async fetch<T>(path: string, accept = 'application/vnd.github+json'): Promise<T> {
         const res = await fetch(`${this.apiBase}${path}`, {
             headers: {
-                Authorization: `Bearer ${this.config.token}`,
+                Authorization: `Bearer ${this.token}`,
                 Accept: accept,
                 'X-GitHub-Api-Version': '2022-11-28',
             },
@@ -33,7 +36,7 @@ export class GitHubClient {
         return (await res.text()) as unknown as T
     }
 
-    async listOpenPRs(limit = 10, baseBranch?: string): Promise<RawPR[]> {
+    async listOpenPRs(repo: string, limit = 10, baseBranch?: string): Promise<RawPR[]> {
         const params = new URLSearchParams({
             state: 'open',
             sort: 'updated',
@@ -41,14 +44,14 @@ export class GitHubClient {
             per_page: String(limit),
             ...(baseBranch && { base: baseBranch }),
         })
-        return this.fetch<RawPR[]>(`/repos/${this.config.repo}/pulls?${params}`)
+        return this.fetch<RawPR[]>(`/repos/${repo}/pulls?${params}`)
     }
 
     // Find PRs that mention a JIRA issue key AND target a specific base branch.
-    // Returns sorted most-recently-updated first.
-    async findPRsForIssue(issueKey: string, baseBranch: string): Promise<number[]> {
+    // Returns PR numbers sorted most-recently-updated first.
+    async findPRsForIssue(repo: string, issueKey: string, baseBranch: string): Promise<number[]> {
         const q = [
-            `repo:${this.config.repo}`,
+            `repo:${repo}`,
             'is:pr',
             `base:${baseBranch}`,
             issueKey,
@@ -65,13 +68,13 @@ export class GitHubClient {
         return data.items.map(i => i.number)
     }
 
-    async getPR(number: number): Promise<RawPR> {
-        return this.fetch<RawPR>(`/repos/${this.config.repo}/pulls/${number}`)
+    async getPR(repo: string, number: number): Promise<RawPR> {
+        return this.fetch<RawPR>(`/repos/${repo}/pulls/${number}`)
     }
 
-    async getPRDiff(number: number): Promise<string> {
+    async getPRDiff(repo: string, number: number): Promise<string> {
         const diff = await this.fetch<string>(
-            `/repos/${this.config.repo}/pulls/${number}`,
+            `/repos/${repo}/pulls/${number}`,
             'application/vnd.github.v3.diff'
         )
         return diff.length > DIFF_CHAR_CAP
@@ -79,15 +82,16 @@ export class GitHubClient {
             : diff
     }
 
-    async fetchPRs(numbers?: number[], limit = 10, baseBranch?: string): Promise<GitHubPR[]> {
+    async fetchPRs(repo: string, numbers?: number[], limit = 10, baseBranch?: string): Promise<GitHubPR[]> {
         const raws = numbers && numbers.length > 0
-            ? await Promise.all(numbers.map(n => this.getPR(n)))
-            : await this.listOpenPRs(limit, baseBranch)
+            ? await Promise.all(numbers.map(n => this.getPR(repo, n)))
+            : await this.listOpenPRs(repo, limit, baseBranch)
 
         const result: GitHubPR[] = []
         for (const raw of raws) {
-            const diff = await this.getPRDiff(raw.number)
+            const diff = await this.getPRDiff(repo, raw.number)
             result.push({
+                repo,
                 number: raw.number,
                 title: raw.title,
                 branch: raw.head.ref,
@@ -101,7 +105,7 @@ export class GitHubClient {
     }
 }
 
-// Matches PROJ-123 style keys. Captures uppercase project prefix.
+// Matches PROJ-123 style keys.
 const JIRA_KEY_RE = /\b([A-Z][A-Z0-9]+)-(\d+)\b/g
 
 function extractJiraKeys(text: string): string[] {

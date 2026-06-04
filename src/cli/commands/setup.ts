@@ -6,6 +6,12 @@ import type {
     QaagentConfig,
     JiraConfig,
     GitConfig,
+    RepoConfig,
+} from '../../types/index.js'
+import {
+    DEFAULT_INTAKE_ISSUE_TYPE,
+    DEFAULT_INTAKE_LABELS,
+    DEFAULT_INTAKE_SEVERITIES,
 } from '../../types/index.js'
 import { saveConfig, CONFIG_PATH } from '../../lib/getConfigs.js'
 
@@ -108,11 +114,52 @@ async function setupJira(): Promise<JiraConfig | undefined> {
         validate: v => v.trim().length > 0 ? true : 'cannot be empty'
     })
     const projectKey = await input({
-        message: 'Default JIRA project key (optional, e.g. ENG):',
+        message: 'Default JIRA project key (source — where sprint issues live, e.g. ENG):',
     })
     const boardId = await number({
         message: 'Default board id for --sprint active (optional):',
     })
+
+    // Bug intake — separate project where qaagent files the bugs it finds
+    const wantsIntake = await confirm({
+        message: 'Configure a separate JIRA project to file agent-discovered bugs into?',
+        default: true,
+    })
+
+    let intakeProjectKey: string | undefined
+    let intakeIssueType: string | undefined
+    let intakeLabels: string[] | undefined
+    let intakeSeverities: Array<'critical' | 'warning' | 'info'> | undefined
+
+    if (wantsIntake) {
+        intakeProjectKey = (await input({
+            message: 'Bug intake project key (e.g. QABUGS):',
+            validate: v => v.trim().length > 0 ? true : 'cannot be empty'
+        })).trim()
+
+        const customIssueType = await input({
+            message: `Issue type for filed bugs (press enter for "${DEFAULT_INTAKE_ISSUE_TYPE}"):`,
+        })
+        intakeIssueType = customIssueType.trim() || DEFAULT_INTAKE_ISSUE_TYPE
+
+        const labelsRaw = await input({
+            message: `Comma-separated labels to apply to every filed bug (press enter for "${DEFAULT_INTAKE_LABELS.join(',')}"):`,
+        })
+        intakeLabels = labelsRaw.trim()
+            ? labelsRaw.split(',').map(s => s.trim()).filter(Boolean)
+            : [...DEFAULT_INTAKE_LABELS]
+
+        const severities = await select<Array<'critical' | 'warning' | 'info'>>({
+            message: 'Which severities should be filed as bugs?',
+            choices: [
+                { name: 'Critical only (recommended — avoids noise)', value: ['critical'] },
+                { name: 'Critical + Warning', value: ['critical', 'warning'] },
+                { name: 'All (Critical + Warning + Info)', value: ['critical', 'warning', 'info'] },
+            ],
+            default: [...DEFAULT_INTAKE_SEVERITIES],
+        })
+        intakeSeverities = severities
+    }
 
     return {
         baseURL: baseURL.replace(/\/+$/, ''),
@@ -120,6 +167,30 @@ async function setupJira(): Promise<JiraConfig | undefined> {
         apiToken,
         ...(projectKey.trim().length > 0 && { projectKey: projectKey.trim() }),
         ...(typeof boardId === 'number' && { boardId }),
+        ...(intakeProjectKey && { intakeProjectKey }),
+        ...(intakeIssueType && { intakeIssueType }),
+        ...(intakeLabels && { intakeLabels }),
+        ...(intakeSeverities && { intakeSeverities }),
+    }
+}
+
+async function setupRepo(label: string, defaults: { baseURL?: string; releaseBranch?: string }): Promise<RepoConfig> {
+    const name = await input({
+        message: `${label} — repo (owner/name):`,
+        validate: v => /^[^/]+\/[^/]+$/.test(v) ? true : 'must be in owner/name format'
+    })
+    const baseURL = await input({
+        message: `${label} — app URL to test against (leave blank for backend/no-UI repos):`,
+        default: defaults.baseURL ?? '',
+    })
+    const releaseBranch = await input({
+        message: `${label} — release branch to scope PRs against:`,
+        default: defaults.releaseBranch ?? 'main',
+    })
+    return {
+        name,
+        ...(baseURL.trim().length > 0 && { baseURL: baseURL.trim() }),
+        ...(releaseBranch.trim().length > 0 && { releaseBranch: releaseBranch.trim() }),
     }
 }
 
@@ -134,25 +205,66 @@ async function setupGit(): Promise<GitConfig | undefined> {
         message: 'GitHub personal access token (repo scope):',
         validate: v => v.trim().length > 0 ? true : 'cannot be empty'
     })
-    const repo = await input({
-        message: 'Default repo (owner/name):',
-        validate: v => /^[^/]+\/[^/]+$/.test(v) ? true : 'must be in owner/name format'
+
+    const mode = await select<'single' | 'multi'>({
+        message: 'Single repo or multiple repos under one project?',
+        choices: [
+            { name: 'Single repo', value: 'single' },
+            { name: 'Multiple repos (frontend + backend + mobile etc.)', value: 'multi' },
+        ],
     })
-    const baseURL = await input({
-        message: 'Default app URL to test against (e.g. https://staging.yourapp.com):',
-        validate: v => v.startsWith('http') ? true : 'must start with http:// or https://'
+
+    if (mode === 'single') {
+        const repo = await input({
+            message: 'Repo (owner/name):',
+            validate: v => /^[^/]+\/[^/]+$/.test(v) ? true : 'must be in owner/name format'
+        })
+        const baseURL = await input({
+            message: 'App URL to test against (e.g. https://staging.yourapp.com):',
+            validate: v => v.startsWith('http') ? true : 'must start with http:// or https://'
+        })
+        const releaseBranch = await input({
+            message: 'Release branch to scope PRs against (e.g. release/2026.07, main):',
+            default: 'main',
+        })
+        return {
+            host: 'github',
+            token,
+            repo,
+            baseURL,
+            ...(releaseBranch.trim().length > 0 && { releaseBranch: releaseBranch.trim() }),
+        }
+    }
+
+    // multi-repo
+    console.log('\n  Add repos one by one. Press N when done.\n')
+
+    const defaultBaseURL = await input({
+        message: 'Default app URL for repos (used when a repo omits its own):',
+        default: '',
     })
-    const releaseBranch = await input({
-        message: 'Release branch to scope PRs against (e.g. release/2026.07, main):',
+    const defaultReleaseBranch = await input({
+        message: 'Default release branch for repos (used when a repo omits its own):',
         default: 'main',
     })
+
+    const repos: RepoConfig[] = []
+    let addMore = true
+    while (addMore) {
+        const repo = await setupRepo(`repo #${repos.length + 1}`, {
+            ...(defaultBaseURL && { baseURL: defaultBaseURL }),
+            ...(defaultReleaseBranch && { releaseBranch: defaultReleaseBranch }),
+        })
+        repos.push(repo)
+        addMore = await confirm({ message: 'Add another repo?', default: false })
+    }
 
     return {
         host: 'github',
         token,
-        repo,
-        baseURL,
-        ...(releaseBranch.trim().length > 0 && { releaseBranch: releaseBranch.trim() }),
+        repos,
+        ...(defaultBaseURL.trim().length > 0 && { baseURL: defaultBaseURL.trim() }),
+        ...(defaultReleaseBranch.trim().length > 0 && { releaseBranch: defaultReleaseBranch.trim() }),
     }
 }
 

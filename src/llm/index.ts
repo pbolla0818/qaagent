@@ -1,8 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { ProviderConfig, LLMInput, LLMOutput, ProviderName } from "../types/index.js";
+import {
+    BedrockRuntimeClient,
+    ConverseCommand,
+    type Message as BedrockMessage,
+} from "@aws-sdk/client-bedrock-runtime";
+import type { ProviderConfig, LLMInput, LLMOutput, ProviderName, LLMSection } from "../types/index.js";
 
-// Default baseURLs per provider 
+// Default baseURLs per provider
 const BASE_URLS: Partial<Record<ProviderName, string>> = {
     groq: 'https://api.groq.com/openai/v1',
     gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
@@ -10,6 +15,7 @@ const BASE_URLS: Partial<Record<ProviderName, string>> = {
     ollama: 'http://localhost:11434/v1',
     cerebras: 'https://api.cerebras.ai/v1',
     mistral: 'https://api.mistral.ai/v1',
+    // azure-foundry baseURL is per-resource; user must provide it in config
 }
 
 const DEFAULT_MODELS: Record<ProviderName, string> = {
@@ -21,12 +27,41 @@ const DEFAULT_MODELS: Record<ProviderName, string> = {
     ollama: 'llama3.2',
     cerebras: 'gpt-oss-120b',
     mistral: 'mistral-medium-3-5',
+    'azure-foundry': 'gpt-4o-mini',
+    bedrock: 'anthropic.claude-haiku-4-5-20251001-v1:0',
 }
 
-// Client factory 
-function createClient(config: ProviderConfig): OpenAI | Anthropic {
+type AnyClient = OpenAI | Anthropic | BedrockRuntimeClient
+
+// Client factory
+function createClient(config: ProviderConfig): AnyClient {
     if (config.provider === 'anthropic') {
         return new Anthropic({ apiKey: config.apiKey })
+    }
+
+    if (config.provider === 'bedrock') {
+        if (!config.awsAccessKeyId || !config.awsSecretAccessKey) {
+            throw new Error('bedrock provider requires awsAccessKeyId and awsSecretAccessKey in config')
+        }
+        return new BedrockRuntimeClient({
+            region: config.region ?? 'us-east-1',
+            credentials: {
+                accessKeyId: config.awsAccessKeyId,
+                secretAccessKey: config.awsSecretAccessKey,
+                ...(config.awsSessionToken && { sessionToken: config.awsSessionToken }),
+            },
+        })
+    }
+
+    if (config.provider === 'azure-foundry') {
+        if (!config.baseURL) {
+            throw new Error('azure-foundry provider requires baseURL in config (e.g. https://<resource>.services.ai.azure.com/openai/v1)')
+        }
+        return new OpenAI({
+            apiKey: config.apiKey ?? 'no-key-needed',
+            baseURL: config.baseURL,
+            defaultHeaders: { 'api-key': config.apiKey ?? '' },
+        })
     }
 
     return new OpenAI({
@@ -40,10 +75,10 @@ export class LLM {
     private primaryConfig: ProviderConfig;
     private fallbackConfig?: ProviderConfig | undefined;
 
-    private client: OpenAI | Anthropic;
-    private fallbackClient?: OpenAI | Anthropic | undefined;
+    private client: AnyClient;
+    private fallbackClient?: AnyClient | undefined;
     private roundRobinProviders: ProviderConfig[] = [];
-    private roundRobinClients: (OpenAI | Anthropic)[] = [];
+    private roundRobinClients: AnyClient[] = [];
     private roundRobinIndex: number = 0;
     private useRoundRobin: boolean = false;
 
@@ -59,6 +94,14 @@ export class LLM {
         if (fallbackConfig) {
             this.fallbackClient = createClient(fallbackConfig)
         }
+    }
+
+    static fromConfig(llm: LLMSection, useRoundRobin = false): LLM {
+        return new LLM(
+            llm.primary,
+            llm.fallback,
+            useRoundRobin ? llm.roundRobin : undefined,
+        )
     }
 
     async complete(input: LLMInput): Promise<LLMOutput> {
@@ -116,13 +159,13 @@ export class LLM {
     }
 
     private async callProvider(
-        client: OpenAI | Anthropic,
+        client: AnyClient,
         config: ProviderConfig,
         input: LLMInput
     ): Promise<LLMOutput> {
         const model = config.model ?? DEFAULT_MODELS[config.provider]
 
-        // Anthropic 
+        // Anthropic
         if (client instanceof Anthropic) {
             const res = await client.messages.create({
                 model,
@@ -150,12 +193,33 @@ export class LLM {
             }
         }
 
-        // OpenAI-compatible (Groq, Gemini, etc.)
+        // AWS Bedrock (Converse API — normalizes across Claude / Llama / Nova)
+        if (client instanceof BedrockRuntimeClient) {
+            const messages: BedrockMessage[] = input.messages.map(m => ({
+                role: m.role,
+                content: [{ text: m.content }],
+            }))
+
+            const res = await client.send(new ConverseCommand({
+                modelId: model,
+                system: [{ text: input.system }],
+                messages,
+                inferenceConfig: { maxTokens: 2048, temperature: 0.2 },
+            }))
+
+            const text = res.output?.message?.content?.[0]?.text
+            if (!text) throw new Error('bedrock returned empty response')
+
+            return { content: text, provider: config.provider, model }
+        }
+
+        // OpenAI-compatible (OpenAI, Groq, Gemini, Cerebras, Mistral, OpenRouter, Ollama, Azure Foundry)
+        const supportsJsonMode = config.provider !== 'azure-foundry'   // foundry may not, depending on deployment
         const res = await (client as OpenAI).chat.completions.create({
             model,
             temperature: 0.2,
             max_tokens: 2048,
-            response_format: { type: 'json_object' },
+            ...(supportsJsonMode && { response_format: { type: 'json_object' as const } }),
             messages: [
                 { role: 'system', content: input.system },
                 ...input.messages.map(m => ({

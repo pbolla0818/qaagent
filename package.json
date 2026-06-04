@@ -1,7 +1,7 @@
 {
-  "name": "crawlix",
-  "version": "0.1.2",
-  "description": "AI testers that think like users. Your users will break it anyway. Crawlix finds it first.",
+  "name": "qaagent",
+  "version": "0.2.0",
+  "description": "AI testers that think like users. Generate end-to-end tests from your active JIRA sprint and open PRs.",
   "main": "./dist/cli/index.js",
   "exports": {
     ".": "./dist/cli/index.js"
@@ -19,7 +19,10 @@
     "automation",
     "playwright",
     "agents",
-    "llm"
+    "llm",
+    "jira",
+    "bedrock",
+    "azure-foundry"
   ],
   "author": "Muhammad Taqi",
   "license": "MIT",
@@ -31,8 +34,16 @@
     }
   },
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
   "bin": {
-    "crawlix": "./dist/cli/index.js"
+    "qaagent": "./dist/cli/index.js"
   },
   "files": [
     "dist",
@@ -41,13 +52,15 @@
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1058.0",
     "@inquirer/prompts": "^8.5.0",
     "boxen": "^8.0.1",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "openai": "^6.39.0",
     "ora": "^9.4.0",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "qaagent": "link:"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

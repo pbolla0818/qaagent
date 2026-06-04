@@ -20,10 +20,10 @@ export const runCommand = new Command('run')
     .option('--round-robin', 'Spread load across multiple providers to avoid rate limiting')
     .action(async (options) => {
         const config = getConfig();
-        if (options.roundRobin && !config.roundRobin?.length) {
-            console.warn(chalk.yellow('  ⚠ --round-robin flag used but no round robin providers configured. Run crawlix setup to add them.'))
+        if (options.roundRobin && !config.llm.roundRobin?.length) {
+            console.warn(chalk.yellow('  ⚠ --round-robin flag used but no round-robin providers configured. Run qaagent setup to add them.'))
         }
-        const llm: LLM = new LLM(config.primary, config.fallback, options.roundRobin ? config.roundRobin : undefined);
+        const llm: LLM = LLM.fromConfig(config.llm, !!options.roundRobin);
 
         const { url, goal, agent, steps, concurrency, headed } = options;
 

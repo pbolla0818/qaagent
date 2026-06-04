@@ -16,7 +16,7 @@ function isValidPersona(config: unknown): config is PersonaConfig {
 }
 
 async function loadCustomPersonas(): Promise<PersonaConfig[]> {
-  const dir = path.resolve(process.cwd(), '.crawlix/agents/')
+  const dir = path.resolve(process.cwd(), '.qaagent/agents/')
   if (!fs.existsSync(dir)) return []
 
   const result: PersonaConfig[] = []
@@ -59,7 +59,7 @@ export async function loadPersonas(agentFlag?: string): Promise<PersonaConfig[]>
         p.name.toLowerCase().replace(/\s+/g, '-') === name.toLowerCase()
       )
       if (!found) throw new Error(
-        `Unknown agent "${name}". Run 'crawlix agents --list' to see available agents.`
+        `Unknown agent "${name}". Run 'qaagent agents --list' to see available agents.`
       )
       return found
     })
@@ -74,7 +74,7 @@ export async function listPersonas() {
   const builtIns = Object.values(PERSONAS)
   const customs = await loadCustomPersonas()
 
-  console.log('\n  👾 available agents\n')
+  console.log('\n  👾 qaagent — available agents\n')
 
   console.log('  built-in:')
   builtIns.forEach(p => {

@@ -103,16 +103,16 @@ Set "type" to "stuck" only after ${this.persona.patience <= 3 ? '2' : this.perso
         try {
             parsed = JSON.parse(cleaned)
         } catch {
-            throw new Error(`Crawlix: received non-JSON response:\n${raw}`)
+            throw new Error(`qaagent:received non-JSON response:\n${raw}`)
         }
         if (Array.isArray(parsed)) {
             parsed = parsed[0] as Record<string, unknown>
         }
         if (!parsed['type'] || typeof parsed['type'] !== 'string') {
-            throw new Error(`Crawlix: missing "type" in response:\n${raw}`)
+            throw new Error(`qaagent:missing "type" in response:\n${raw}`)
         }
         if (!parsed['reasoning'] || typeof parsed['reasoning'] !== 'string') {
-            throw new Error(`Crawlix: missing "reasoning" in response:\n${raw}`)
+            throw new Error(`qaagent:missing "reasoning" in response:\n${raw}`)
         }
 
         return parsed as unknown as Action
